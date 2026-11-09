@@ -1,0 +1,26 @@
+{
+	"name": "notion-to-emdash",
+	"version": "0.0.0",
+	"description": "Posts pages from a Notion database to an EmDash site, with auto thumbnails. Runs on GitHub Actions.",
+	"private": true,
+	"type": "module",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/RieTamura/Notion-To-EmDash.git"
+	},
+	"packageManager": "npm@11.13.0",
+	"engines": {
+		"node": ">=24"
+	},
+	"scripts": {
+		"start": "node src/index.ts",
+		"typecheck": "tsc",
+		"test": "tsc && vitest run"
+	},
+	"devDependencies": {
+		"@types/node": "^24.19.2",
+		"typescript": "^5.9.3",
+		"vitest": "^5.1.0"
+	}
+}
