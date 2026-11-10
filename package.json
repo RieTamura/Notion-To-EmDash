@@ -14,7 +14,7 @@
 		"node": ">=24"
 	},
 	"scripts": {
-		"start": "node src/index.ts",
+		"start": "node --env-file-if-exists=.env src/index.ts",
 		"typecheck": "tsc",
 		"test": "tsc && vitest run"
 	},
