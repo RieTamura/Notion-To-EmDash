@@ -71,3 +71,45 @@ export async function sendPost(api: ApiLike, input: PostInput): Promise<PostResu
 export function postUrl(siteUrl: string, slug: string): string {
 	return `${siteUrl}/${COLLECTION}/${slug}`;
 }
+
+/** The post a page was sent to can no longer be found on the site. */
+export class PostNotFoundError extends Error {
+	override name = "PostNotFoundError";
+}
+
+/**
+ * The ID of the post a page was sent to, found from the EmDash URL written back to Notion.
+ * The API takes a slug in place of an ID, so the URL's last part is enough.
+ * Throws PostNotFoundError when the URL is for another site or the post is gone.
+ */
+export async function findPostId(api: ApiLike, siteUrl: string, emdashUrl: string): Promise<string> {
+	let url: URL;
+	try {
+		url = new URL(emdashUrl);
+	} catch {
+		throw new PostNotFoundError(`"${emdashUrl}" in Notion is not a URL. Empty it to send the page as a new post`);
+	}
+	if (url.origin !== new URL(siteUrl).origin) {
+		throw new PostNotFoundError(`${emdashUrl} is not on ${siteUrl}. Empty the EmDash URL in Notion to send the page as a new post`);
+	}
+	const last = url.pathname.split("/").filter(Boolean).pop();
+	if (!last) throw new PostNotFoundError(`${emdashUrl} has no post slug. Empty it to send the page as a new post`);
+	let slug: string;
+	try {
+		slug = decodeURIComponent(last);
+	} catch {
+		slug = last;
+	}
+	try {
+		const data = await api.request<{ item: { id: string } }>("GET", `/content/${COLLECTION}/${encodeURIComponent(slug)}`);
+		return data.item.id;
+	} catch (error) {
+		if ((error as { status?: number }).status === 404) {
+			throw new PostNotFoundError(
+				`The post ${emdashUrl} is not on the site (deleted, or its slug was changed in the admin). ` +
+				"Put its current URL in the EmDash URL in Notion, or empty it to send the page as a new post",
+			);
+		}
+		throw error;
+	}
+}

@@ -6,6 +6,7 @@ import { EmDashApi, EmDashError } from "./emdash.ts";
 import { ImageDownloadError } from "./media.ts";
 import type { Block } from "./portable-text.ts";
 import { checkSchema, missingOptional, NotionClient, NotionError, needsSending, parsePage } from "./notion.ts";
+import { findPostId, PostNotFoundError } from "./publish.ts";
 import { sendArticle } from "./send.ts";
 import { UnknownCategoryError } from "./taxonomy.ts";
 
@@ -40,8 +41,10 @@ async function main(): Promise<void> {
 
 	console.log(`${articles.length} page(s) marked to publish; ${toSend.length} to send`);
 	const dump = process.argv.includes("--dump");
-	// Until step 7 writes the result back to Notion, sending is only done when asked, as a draft
-	const send = process.argv.includes("--send");
+	// --send sends as drafts (for trying the tool); --publish publishes. Without either, nothing is sent
+	const publish = process.argv.includes("--publish");
+	const send = publish || process.argv.includes("--send");
+	if (!send) console.log("Dry run: add --send (drafts) or --publish to send");
 	const emdash = new EmDashApi({ siteUrl: config.emdashUrl, token: config.emdashToken });
 	if (send) await emdash.checkConnection();
 	for (const article of toSend.slice(0, config.maxPosts)) {
@@ -61,16 +64,28 @@ async function main(): Promise<void> {
 			console.log(`  saved to ${file}`);
 		}
 		if (!send) continue;
-		if (article.emdashUrl) {
-			console.log("  not sent: updating a sent post comes with step 7");
-			continue;
-		}
+
+		let url: string;
 		try {
-			const result = await sendArticle(emdash, article, body, { publish: false });
-			console.log(`  sent as a draft: ${result.url} (id ${result.id}, ${result.imagesUploaded} image(s))`);
+			const postId = article.emdashUrl ? await findPostId(emdash, config.emdashUrl, article.emdashUrl) : undefined;
+			const result = await sendArticle(emdash, article, body, { postId, publish });
+			url = result.url;
+			const how = result.published ? "published" : result.created ? "sent as a draft" : "updated as a draft";
+			console.log(`  ${how}: ${result.url} (${result.imagesUploaded} image(s))`);
 		} catch (error) {
 			if (!isExpected(error)) throw error;
 			console.error(`  not sent: ${(error as Error).message}`);
+			process.exitCode = 1;
+			continue;
+		}
+
+		try {
+			await notion.writeBack(article.pageId, config.properties, url, new Date());
+		} catch (error) {
+			if (!(error instanceof NotionError)) throw error;
+			// Without the mark, the next run would make the post again
+			console.error(`  sent, but could not mark the page in Notion: ${error.message}`);
+			console.error(`  put ${url} in its "${config.properties.emdashUrl}" by hand before the next run`);
 			process.exitCode = 1;
 		}
 	}
@@ -80,7 +95,7 @@ async function main(): Promise<void> {
 	for (const article of untitled) {
 		console.warn(`Skipped a page with no title: ${article.notionUrl}`);
 	}
-	// Steps 6 and 7 of the plan (thumbnail, write back) come here.
+	// Step 6 of the plan (thumbnail) comes here.
 }
 
 /** "3 normal, 1 h2, 2 bullet, 1 image" */
@@ -97,7 +112,7 @@ function describeBlocks(blocks: Block[]): string {
 /** Errors that are reported as a message; anything else is a bug and shows its stack. */
 function isExpected(error: unknown): boolean {
 	return error instanceof EmDashError || error instanceof ImageDownloadError || error instanceof UnknownCategoryError ||
-		error instanceof NotionError;
+		error instanceof NotionError || error instanceof PostNotFoundError;
 }
 
 main().catch((error: unknown) => {

@@ -360,3 +360,26 @@ describe("missingOptional", () => {
 		expect(missingOptional(schema, { ...names, slug: "slug" })).toEqual(["抜粋", "カテゴリ", "アイキャッチ"]);
 	});
 });
+
+describe("NotionClient.writeBack", () => {
+	it("writes the post URL and the sent time to the page", async () => {
+		const { fetch, calls } = fakeFetch([json({ object: "page", id: "p1" })]);
+		const client = new NotionClient({ token: "t", fetch, sleep: noSleep });
+		await client.writeBack("p1", { ...names, emdashUrl: "URL", sentAt: "送った日" }, "https://site.example/posts/a", new Date("2026-11-10T09:00:00Z"));
+		expect(calls[0]!.url).toBe("https://api.notion.com/v1/pages/p1");
+		expect(calls[0]!.init!.method).toBe("PATCH");
+		expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({
+			properties: {
+				URL: { url: "https://site.example/posts/a" },
+				送った日: { date: { start: "2026-11-10T09:00:00.000Z" } },
+			},
+		});
+	});
+
+	it("tries the write-back again when Notion is busy", async () => {
+		const { fetch, calls } = fakeFetch([json({ code: "rate_limited" }, 429), json({ object: "page" })]);
+		const client = new NotionClient({ token: "t", fetch, sleep: noSleep });
+		await client.writeBack("p1", names, "https://site.example/posts/a", new Date());
+		expect(calls).toHaveLength(2);
+	});
+});

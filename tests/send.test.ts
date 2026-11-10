@@ -4,7 +4,7 @@ import { EmDashApi, EmDashError, type FetchLike } from "../src/emdash.ts";
 import { downloadImage, fileNameFromUrl, ImageDownloadError } from "../src/media.ts";
 import type { Article } from "../src/notion.ts";
 import type { ImageBlock } from "../src/portable-text.ts";
-import { sendPost } from "../src/publish.ts";
+import { findPostId, PostNotFoundError, sendPost } from "../src/publish.ts";
 import { sendArticle } from "../src/send.ts";
 import { resolveTaxonomies, UnknownCategoryError } from "../src/taxonomy.ts";
 
@@ -212,5 +212,46 @@ describe("sendArticle", () => {
 		const body = convertBlocks([imageBlock("https://files.example/a.png?sig=1")]);
 		await expect(sendArticle(api(fetch), article(), body, { publish: false, fetch })).rejects.toBeInstanceOf(ImageDownloadError);
 		expect(calls.some((c) => c.url.includes("/content/"))).toBe(false);
+	});
+});
+
+describe("findPostId", () => {
+	it("finds the post by the slug at the end of the URL, Japanese or not", async () => {
+		const { fetch, calls } = fakeServer([["GET /content/posts/", () => ok({ item: { id: "post1" } })]]);
+		expect(await findPostId(api(fetch), "https://site.example", "https://site.example/posts/テスト1")).toBe("post1");
+		expect(await findPostId(api(fetch), "https://site.example", "https://site.example/posts/%E3%83%86/")).toBe("post1");
+		expect(calls[0]!.url).toBe("https://site.example/_emdash/api/content/posts/%E3%83%86%E3%82%B9%E3%83%881");
+		expect(calls[1]!.url).toBe("https://site.example/_emdash/api/content/posts/%E3%83%86");
+	});
+
+	it("says what to do when the post is gone", async () => {
+		const { fetch } = fakeServer([["GET", () => json({ success: false, error: { code: "NOT_FOUND", message: "Content item not found" } }, 404)]]);
+		const error = await findPostId(api(fetch), "https://site.example", "https://site.example/posts/a").catch((e: unknown) => e);
+		expect(error).toBeInstanceOf(PostNotFoundError);
+		expect((error as Error).message).toContain("empty it");
+	});
+
+	it("refuses a URL on another site or no URL at all, without asking the site", async () => {
+		const { fetch, calls } = fakeServer([]);
+		await expect(findPostId(api(fetch), "https://site.example", "https://other.example/posts/a")).rejects.toBeInstanceOf(PostNotFoundError);
+		await expect(findPostId(api(fetch), "https://site.example", "テスト")).rejects.toBeInstanceOf(PostNotFoundError);
+		expect(calls).toHaveLength(0);
+	});
+
+	it("passes other errors through", async () => {
+		const { fetch } = fakeServer([["GET", () => json({ success: false, error: { code: "INVALID_TOKEN", message: "x" } }, 401)]]);
+		await expect(findPostId(api(fetch), "https://site.example", "https://site.example/posts/a")).rejects.toBeInstanceOf(EmDashError);
+	});
+});
+
+describe("sendArticle with an existing post", () => {
+	it("updates the post and publishes it when asked", async () => {
+		const { fetch, calls } = fakeServer([
+			["PUT /content/posts/post1", () => ok({ item: { id: "post1", slug: "a", status: "draft" }, _rev: "r2" })],
+			["POST /content/posts/post1/publish", () => ok({ item: { id: "post1", slug: "a", status: "published" }, _rev: "r3" })],
+		]);
+		const result = await sendArticle(api(fetch), article(), convertBlocks([]), { postId: "post1", publish: true, fetch });
+		expect(result).toMatchObject({ created: false, published: true, url: "https://site.example/posts/a" });
+		expect(calls.map((c) => c.method)).toEqual(["PUT", "POST"]);
 	});
 });

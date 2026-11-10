@@ -189,8 +189,25 @@ export class NotionClient {
 		return blocks;
 	}
 
-	/** All requests here only read, so they are safe to try again. */
-	private async request<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+	/**
+	 * Writes the sent mark back to the page: the post's URL and the time it was sent.
+	 * This is the last thing done to a page, so the tool becomes its last editor
+	 * (see needsSending).
+	 */
+	async writeBack(pageId: string, names: PropertyNames, emdashUrl: string, sentAt: Date): Promise<void> {
+		await this.request("PATCH", `/pages/${pageId}`, {
+			properties: {
+				[names.emdashUrl]: { url: emdashUrl },
+				[names.sentAt]: { date: { start: sentAt.toISOString() } },
+			},
+		});
+	}
+
+	/**
+	 * Reads, the query (a POST that only reads) and the write-back (which sets the same values
+	 * again when repeated) are all safe to try again.
+	 */
+	private async request<T>(method: "GET" | "POST" | "PATCH", path: string, body?: unknown): Promise<T> {
 		for (let attempt = 0; ; attempt++) {
 			const response = await this.fetch(`${NOTION_API}${path}`, {
 				method,
