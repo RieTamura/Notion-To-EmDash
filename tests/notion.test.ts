@@ -300,3 +300,48 @@ describe("needsSending", () => {
 		expect(needsSending({ ...sent, title: "", emdashUrl: "" }, BOT)).toBe(false);
 	});
 });
+
+describe("NotionClient.getBlockTree", () => {
+	it("reads children page by page, goes into nested blocks, and skips trashed blocks", async () => {
+		const { fetch, calls } = fakeFetch([
+			json({
+				results: [
+					{ id: "a", type: "bulleted_list_item", has_children: true },
+					{ id: "gone", type: "paragraph", has_children: false, in_trash: true },
+				],
+				has_more: true,
+				next_cursor: "c2",
+			}),
+			json({ results: [{ id: "b", type: "paragraph", has_children: false }], has_more: false, next_cursor: null }),
+			json({ results: [{ id: "a1", type: "bulleted_list_item", has_children: false }], has_more: false, next_cursor: null }),
+		]);
+		const client = new NotionClient({ token: "t", fetch, sleep: noSleep });
+		const tree = await client.getBlockTree("page");
+		expect(tree.map((b) => b.id)).toEqual(["a", "b"]);
+		expect(tree[0]!.children!.map((b) => b.id)).toEqual(["a1"]);
+		expect(calls.map((c) => c.url)).toEqual([
+			"https://api.notion.com/v1/blocks/page/children?page_size=100",
+			"https://api.notion.com/v1/blocks/page/children?page_size=100&start_cursor=c2",
+			"https://api.notion.com/v1/blocks/a/children?page_size=100",
+		]);
+	});
+
+	it("does not open sub-pages, and reads a synced copy from its original", async () => {
+		const { fetch, calls } = fakeFetch([
+			json({
+				results: [
+					{ id: "sub", type: "child_page", has_children: true },
+					{ id: "copy", type: "synced_block", has_children: true, synced_block: { synced_from: { type: "block_id", block_id: "orig" } } },
+				],
+				has_more: false,
+				next_cursor: null,
+			}),
+			json({ results: [{ id: "o1", type: "paragraph", has_children: false }], has_more: false, next_cursor: null }),
+		]);
+		const client = new NotionClient({ token: "t", fetch, sleep: noSleep });
+		const tree = await client.getBlockTree("page");
+		expect(tree[0]!.children).toBeUndefined();
+		expect(tree[1]!.children!.map((b) => b.id)).toEqual(["o1"]);
+		expect(calls[1]!.url).toBe("https://api.notion.com/v1/blocks/orig/children?page_size=100");
+	});
+});

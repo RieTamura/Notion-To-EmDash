@@ -1,10 +1,14 @@
 import type { PropertyNames } from "./config.ts";
+import type { NotionBlock } from "./convert.ts";
 
 export const NOTION_API = "https://api.notion.com/v1";
 export const NOTION_VERSION = "2026-03-11";
 
 /** How many times a request is tried again after 429, 529 or a temporary server error. */
 const MAX_RETRIES = 3;
+
+/** How deep nested blocks are read. Deeper content is left out (lists rarely go past a few levels). */
+const MAX_DEPTH = 8;
 
 export class NotionError extends Error {
 	override name = "NotionError";
@@ -66,6 +70,12 @@ export interface NotionPage {
 
 interface QueryResponse {
 	results: (NotionPage | { object: string })[];
+	has_more: boolean;
+	next_cursor: string | null;
+}
+
+interface BlockListResponse {
+	results: (NotionBlock & { in_trash?: boolean })[];
 	has_more: boolean;
 	next_cursor: string | null;
 }
@@ -143,6 +153,40 @@ export class NotionClient {
 			cursor = response.has_more ? response.next_cursor : null;
 		} while (cursor);
 		return pages;
+	}
+
+	/** One level of a block's children, all pages of them. */
+	async getBlockChildren(blockId: string): Promise<NotionBlock[]> {
+		const blocks: NotionBlock[] = [];
+		let cursor: string | null = null;
+		do {
+			const query: string = cursor ? `?page_size=100&start_cursor=${encodeURIComponent(cursor)}` : "?page_size=100";
+			const response: BlockListResponse = await this.request<BlockListResponse>(
+				"GET",
+				`/blocks/${blockId}/children${query}`,
+			);
+			blocks.push(...response.results.filter((block) => !block.in_trash));
+			cursor = response.has_more ? response.next_cursor : null;
+		} while (cursor);
+		return blocks;
+	}
+
+	/**
+	 * The page's whole body, with each block's children read into `children`.
+	 * Sub-pages and databases are not opened: they are separate pages, not part of this article.
+	 */
+	async getBlockTree(blockId: string, depth = 0): Promise<NotionBlock[]> {
+		const blocks = await this.getBlockChildren(blockId);
+		if (depth >= MAX_DEPTH) return blocks;
+		for (const block of blocks) {
+			if (!block.has_children || block.type === "child_page" || block.type === "child_database") continue;
+			// A copy of a synced block shows the original's content
+			const synced = block.type === "synced_block"
+				? (block.synced_block as { synced_from?: { block_id?: string } | null } | undefined)?.synced_from?.block_id
+				: undefined;
+			block.children = await this.getBlockTree(synced ?? block.id, depth + 1);
+		}
+		return blocks;
 	}
 
 	/** All requests here only read, so they are safe to try again. */
