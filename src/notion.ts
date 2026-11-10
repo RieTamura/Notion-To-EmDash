@@ -275,6 +275,17 @@ export function checkSchema(schema: Record<string, SchemaProperty>, names: Prope
 	return problems;
 }
 
+/**
+ * Optional properties the database does not have, as their names. The tool works without
+ * them, but a property with a different name (say "slug" instead of "スラッグ") is silently
+ * ignored, so the run lists them.
+ */
+export function missingOptional(schema: Record<string, SchemaProperty>, names: PropertyNames): string[] {
+	return (Object.keys(EXPECTED_TYPES) as (keyof PropertyNames)[])
+		.filter((key) => !REQUIRED_PROPERTIES.includes(key) && !schema[names[key]])
+		.map((key) => names[key]);
+}
+
 /* ---------- Reading a page ---------- */
 
 export interface FeaturedImage {

@@ -2,8 +2,12 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ConfigError, loadConfig } from "./config.ts";
 import { convertBlocks } from "./convert.ts";
+import { EmDashApi, EmDashError } from "./emdash.ts";
+import { ImageDownloadError } from "./media.ts";
 import type { Block } from "./portable-text.ts";
-import { checkSchema, NotionClient, NotionError, needsSending, parsePage } from "./notion.ts";
+import { checkSchema, missingOptional, NotionClient, NotionError, needsSending, parsePage } from "./notion.ts";
+import { sendArticle } from "./send.ts";
+import { UnknownCategoryError } from "./taxonomy.ts";
 
 async function main(): Promise<void> {
 	const config = loadConfig();
@@ -24,6 +28,11 @@ async function main(): Promise<void> {
 		return;
 	}
 
+	const unused = missingOptional(dataSource.properties, config.properties);
+	if (unused.length > 0) {
+		console.log(`Not in the database, so not used: ${unused.join(", ")} (rename with PROP_* settings if yours differ)`);
+	}
+
 	const pages = await notion.queryPublishedPages(source.id, config.properties.publish);
 	const articles = pages.filter((page) => !page.in_trash).map((page) => parsePage(page, config.properties));
 	const toSend = articles.filter((article) => needsSending(article, botUserId));
@@ -31,6 +40,10 @@ async function main(): Promise<void> {
 
 	console.log(`${articles.length} page(s) marked to publish; ${toSend.length} to send`);
 	const dump = process.argv.includes("--dump");
+	// Until step 7 writes the result back to Notion, sending is only done when asked, as a draft
+	const send = process.argv.includes("--send");
+	const emdash = new EmDashApi({ siteUrl: config.emdashUrl, token: config.emdashToken });
+	if (send) await emdash.checkConnection();
 	for (const article of toSend.slice(0, config.maxPosts)) {
 		const state = article.emdashUrl ? "update" : "new";
 		console.log(`- [${state}] ${article.title} (${article.notionUrl})`);
@@ -47,6 +60,19 @@ async function main(): Promise<void> {
 			await writeFile(file, `${JSON.stringify(body.blocks, null, "\t")}\n`);
 			console.log(`  saved to ${file}`);
 		}
+		if (!send) continue;
+		if (article.emdashUrl) {
+			console.log("  not sent: updating a sent post comes with step 7");
+			continue;
+		}
+		try {
+			const result = await sendArticle(emdash, article, body, { publish: false });
+			console.log(`  sent as a draft: ${result.url} (id ${result.id}, ${result.imagesUploaded} image(s))`);
+		} catch (error) {
+			if (!isExpected(error)) throw error;
+			console.error(`  not sent: ${(error as Error).message}`);
+			process.exitCode = 1;
+		}
 	}
 	if (toSend.length > config.maxPosts) {
 		console.log(`  ${toSend.length - config.maxPosts} more will be sent in later runs`);
@@ -54,7 +80,7 @@ async function main(): Promise<void> {
 	for (const article of untitled) {
 		console.warn(`Skipped a page with no title: ${article.notionUrl}`);
 	}
-	// Steps 5 to 7 of the plan (upload, send, write back) come here.
+	// Steps 6 and 7 of the plan (thumbnail, write back) come here.
 }
 
 /** "3 normal, 1 h2, 2 bullet, 1 image" */
@@ -68,9 +94,15 @@ function describeBlocks(blocks: Block[]): string {
 	return [...counts].map(([kind, count]) => `${count} ${kind}`).join(", ");
 }
 
+/** Errors that are reported as a message; anything else is a bug and shows its stack. */
+function isExpected(error: unknown): boolean {
+	return error instanceof EmDashError || error instanceof ImageDownloadError || error instanceof UnknownCategoryError ||
+		error instanceof NotionError;
+}
+
 main().catch((error: unknown) => {
-	if (error instanceof ConfigError || error instanceof NotionError) {
-		console.error(error.message);
+	if (error instanceof ConfigError || isExpected(error)) {
+		console.error((error as Error).message);
 	} else {
 		console.error(error);
 	}

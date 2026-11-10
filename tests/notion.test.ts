@@ -3,6 +3,7 @@ import { DEFAULT_PROPERTY_NAMES } from "../src/config.ts";
 import {
 	type Article,
 	checkSchema,
+	missingOptional,
 	type FetchLike,
 	NOTION_VERSION,
 	NotionClient,
@@ -343,5 +344,19 @@ describe("NotionClient.getBlockTree", () => {
 		expect(tree[0]!.children).toBeUndefined();
 		expect(tree[1]!.children!.map((b) => b.id)).toEqual(["o1"]);
 		expect(calls[1]!.url).toBe("https://api.notion.com/v1/blocks/orig/children?page_size=100");
+	});
+});
+
+describe("missingOptional", () => {
+	it("lists optional properties the database does not have", () => {
+		const schema: Record<string, SchemaProperty> = {
+			公開: { id: "a", name: "公開", type: "checkbox" },
+			"EmDash URL": { id: "b", name: "EmDash URL", type: "url" },
+			送信日時: { id: "c", name: "送信日時", type: "date" },
+			slug: { id: "d", name: "slug", type: "rich_text" },
+			タグ: { id: "e", name: "タグ", type: "multi_select" },
+		};
+		expect(missingOptional(schema, names)).toEqual(["スラッグ", "抜粋", "カテゴリ", "アイキャッチ"]);
+		expect(missingOptional(schema, { ...names, slug: "slug" })).toEqual(["抜粋", "カテゴリ", "アイキャッチ"]);
 	});
 });
