@@ -68,10 +68,11 @@ async function main(): Promise<void> {
 		let url: string;
 		try {
 			const postId = article.emdashUrl ? await findPostId(emdash, config.emdashUrl, article.emdashUrl) : undefined;
-			const result = await sendArticle(emdash, article, body, { postId, publish });
+			const result = await sendArticle(emdash, article, body, { postId, publish, thumbnail: config.autoThumbnail ? {} : undefined });
 			url = result.url;
 			const how = result.published ? "published" : result.created ? "sent as a draft" : "updated as a draft";
 			console.log(`  ${how}: ${result.url} (${result.imagesUploaded} image(s))`);
+			if (result.thumbnail) console.log(`  ${result.thumbnail}`);
 		} catch (error) {
 			if (!isExpected(error)) throw error;
 			console.error(`  not sent: ${(error as Error).message}`);
@@ -95,7 +96,6 @@ async function main(): Promise<void> {
 	for (const article of untitled) {
 		console.warn(`Skipped a page with no title: ${article.notionUrl}`);
 	}
-	// Step 6 of the plan (thumbnail) comes here.
 }
 
 /** "3 normal, 1 h2, 2 bullet, 1 image" */

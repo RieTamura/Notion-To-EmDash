@@ -255,3 +255,94 @@ describe("sendArticle with an existing post", () => {
 		expect(calls.map((c) => c.method)).toEqual(["PUT", "POST"]);
 	});
 });
+
+describe("featured image and automatic thumbnail", () => {
+	const imageBlock = (url: string): NotionBlock => ({ id: url, type: "image", image: { type: "file", file: { url }, caption: [{ plain_text: "写真", annotations: {}, href: null, type: "text", text: { content: "写真", link: null } }] } });
+	const design = { width: 1200, height: 630, background: { color: "#ffffff", image: null, overlay: false }, textColor: "#000000", font: "Zen Maru Gothic", siteName: "Site", logo: null };
+	const drawn: { title: string; date: string; siteUrl: string }[] = [];
+	const draw = async (_d: unknown, text: { title: string; date: string }, siteUrl: string) => {
+		drawn.push({ ...text, siteUrl });
+		return new Uint8Array([137, 80, 78, 71]);
+	};
+	const postData = (featured: unknown, publishedAt: string | null = null) =>
+		ok({ item: { id: "post1", slug: "a", status: "published", publishedAt, data: { featured_image: featured } }, _rev: "r1" });
+	const updated = () => ok({ item: { id: "post1", slug: "a", status: "draft" }, _rev: "r2" });
+	const lastBody = (calls: Call[]) => calls.at(-1)!.body as { data: Record<string, unknown> };
+
+	it("uses the first body image when Notion has no featured image, without drawing", async () => {
+		drawn.length = 0;
+		const { fetch, calls } = fakeServer([
+			["GET https://files.example/", () => png()],
+			["POST /media", () => ok({ item: media("m1") })],
+			["POST /content/posts", () => created()],
+		]);
+		const result = await sendArticle(api(fetch), article(), convertBlocks([imageBlock("https://files.example/a.png")]), { publish: false, fetch, thumbnail: { draw } });
+		expect(lastBody(calls).data.featured_image).toMatchObject({ id: "m1", alt: "写真" });
+		expect(drawn).toHaveLength(0);
+		expect(result.thumbnail).toBeUndefined();
+	});
+
+	it("draws and uploads a thumbnail for a new post with no image", async () => {
+		drawn.length = 0;
+		const { fetch, calls } = fakeServer([
+			["GET /plugins/auto-thumbnail/design", () => ok(design)],
+			["POST /media", () => ok({ item: { ...media("t1"), filename: "auto-thumbnail-20261111.png" } })],
+			["POST /content/posts", () => created()],
+		]);
+		const result = await sendArticle(api(fetch), article(), convertBlocks([]), { publish: false, fetch, thumbnail: { draw } });
+		expect(drawn).toEqual([{ title: "テスト1", date: expect.stringMatching(/^\d{4}\.\d{2}\.\d{2}$/), siteUrl: "https://site.example" }]);
+		const upload = calls.find((c) => c.url.endsWith("/media"))!.body as FormData;
+		expect((upload.get("file") as File).name).toMatch(/^auto-thumbnail-\d{8}\.png$/);
+		expect(lastBody(calls).data.featured_image).toMatchObject({ id: "t1", alt: "テスト1" });
+		expect(result.thumbnail).toBe("made a thumbnail");
+	});
+
+	it("keeps a featured image chosen in the admin when updating", async () => {
+		drawn.length = 0;
+		const { fetch, calls } = fakeServer([
+			["GET /content/posts/post1", () => postData({ id: "x", filename: "photo.jpg" })],
+			["PUT /content/posts/post1", () => updated()],
+		]);
+		const result = await sendArticle(api(fetch), article(), convertBlocks([]), { postId: "post1", publish: false, fetch, thumbnail: { draw } });
+		expect(drawn).toHaveLength(0);
+		expect(lastBody(calls).data.featured_image).toBeUndefined();
+		expect(result.thumbnail).toContain("kept");
+	});
+
+	it("redraws an earlier automatic thumbnail with the post's published date", async () => {
+		drawn.length = 0;
+		const { fetch, calls } = fakeServer([
+			["GET /content/posts/post1", () => postData({ id: "t0", filename: "auto-thumbnail-20261101.png" }, "2026-11-01T03:00:00.000Z")],
+			["GET /plugins/auto-thumbnail/design", () => ok(design)],
+			["POST /media", () => ok({ item: media("t1") })],
+			["PUT /content/posts/post1", () => updated()],
+		]);
+		await sendArticle(api(fetch), article(), convertBlocks([]), { postId: "post1", publish: false, fetch, thumbnail: { draw } });
+		expect(drawn[0]!.date).toBe("2026.11.01");
+		expect(lastBody(calls).data.featured_image).toMatchObject({ id: "t1" });
+	});
+
+	it("sends without a thumbnail when the site has no plugin, or drawing fails", async () => {
+		const { fetch } = fakeServer([
+			["GET /plugins/auto-thumbnail/design", () => json({ success: false, error: { code: "NOT_FOUND", message: "x" } }, 404)],
+			["POST /content/posts", () => created()],
+		]);
+		const none = await sendArticle(api(fetch), article(), convertBlocks([]), { publish: false, fetch, thumbnail: { draw } });
+		expect(none.thumbnail).toContain("does not have");
+
+		const broken = fakeServer([
+			["GET /plugins/auto-thumbnail/design", () => ok(design)],
+			["POST /content/posts", () => created()],
+		]);
+		const failing = async () => { throw new Error("canvas broke"); };
+		const result = await sendArticle(api(broken.fetch), article(), convertBlocks([]), { publish: false, fetch: broken.fetch, thumbnail: { draw: failing } });
+		expect(result.thumbnail).toContain("canvas broke");
+		expect(lastBody(broken.calls).data.featured_image).toBeUndefined();
+	});
+
+	it("does not draw when the setting is off", async () => {
+		const { fetch, calls } = fakeServer([["POST /content/posts", () => created()]]);
+		await sendArticle(api(fetch), article(), convertBlocks([]), { publish: false, fetch });
+		expect(calls).toHaveLength(1);
+	});
+});

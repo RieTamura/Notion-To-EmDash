@@ -18,6 +18,7 @@ describe("loadConfig", () => {
 			emdashUrl: "https://example.com",
 			emdashToken: "ec_test",
 			maxPosts: 5,
+			autoThumbnail: true,
 			properties: DEFAULT_PROPERTY_NAMES,
 		});
 	});
@@ -35,6 +36,12 @@ describe("loadConfig", () => {
 
 	it("rejects a URL that cannot be read", () => {
 		expect(() => loadConfig({ ...base, EMDASH_URL: "example.com" })).toThrow("EMDASH_URL is not a valid URL");
+	});
+
+	it("reads AUTO_THUMBNAIL and rejects other words", () => {
+		expect(loadConfig({ ...base, AUTO_THUMBNAIL: "False" }).autoThumbnail).toBe(false);
+		expect(loadConfig({ ...base, AUTO_THUMBNAIL: " " }).autoThumbnail).toBe(true);
+		expect(() => loadConfig({ ...base, AUTO_THUMBNAIL: "no" })).toThrow(ConfigError);
 	});
 
 	it("reads MAX_POSTS and rejects bad values", () => {

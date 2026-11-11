@@ -51,6 +51,8 @@ export interface Config {
 	emdashToken: string;
 	/** Most pages sent in one run. Failed pages are tried again in the next run. */
 	maxPosts: number;
+	/** Draw a thumbnail for a post with no featured image and no body image (AUTO_THUMBNAIL, on unless "false"). */
+	autoThumbnail: boolean;
 	properties: PropertyNames;
 }
 
@@ -103,6 +105,11 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
 		throw new ConfigError("MAX_POSTS must be a whole number of 1 or more");
 	}
 
+	const rawThumbnail = env.AUTO_THUMBNAIL?.trim().toLowerCase() || "true";
+	if (rawThumbnail !== "true" && rawThumbnail !== "false") {
+		throw new ConfigError("AUTO_THUMBNAIL must be true or false");
+	}
+
 	const properties = { ...DEFAULT_PROPERTY_NAMES };
 	for (const key of Object.keys(PROPERTY_ENV) as (keyof PropertyNames)[]) {
 		const custom = env[PROPERTY_ENV[key]]?.trim();
@@ -115,6 +122,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
 		emdashUrl: url.origin,
 		emdashToken: env.EMDASH_TOKEN!.trim(),
 		maxPosts,
+		autoThumbnail: rawThumbnail === "true",
 		properties,
 	};
 }
