@@ -1,0 +1,79 @@
+name: Notion To EmDash
+
+on:
+  schedule:
+    # Every 30 minutes (UTC). Change this line to run more or less often.
+    # GitHub may start a scheduled run several minutes late.
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "publish: publish the posts / draft: send as drafts / dry-run: only list what would be sent"
+        type: choice
+        options: [publish, draft, dry-run]
+        default: publish
+
+# Two runs at once could send the same page twice.
+concurrency:
+  group: notion-to-emdash
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+      NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+      EMDASH_URL: ${{ secrets.EMDASH_URL }}
+      EMDASH_TOKEN: ${{ secrets.EMDASH_TOKEN }}
+      # Optional settings live in Variables (Settings → Secrets and variables → Actions → Variables).
+      MAX_POSTS: ${{ vars.MAX_POSTS }}
+      AUTO_THUMBNAIL: ${{ vars.AUTO_THUMBNAIL }}
+      PROP_PUBLISH: ${{ vars.PROP_PUBLISH }}
+      PROP_SLUG: ${{ vars.PROP_SLUG }}
+      PROP_EXCERPT: ${{ vars.PROP_EXCERPT }}
+      PROP_CATEGORY: ${{ vars.PROP_CATEGORY }}
+      PROP_TAGS: ${{ vars.PROP_TAGS }}
+      PROP_FEATURED_IMAGE: ${{ vars.PROP_FEATURED_IMAGE }}
+      PROP_EMDASH_URL: ${{ vars.PROP_EMDASH_URL }}
+      PROP_SENT_AT: ${{ vars.PROP_SENT_AT }}
+      # The date on the thumbnail uses this time zone.
+      TZ: ${{ vars.TZ || 'Asia/Tokyo' }}
+    steps:
+      - name: Check the settings
+        id: ready
+        run: |
+          if [ -z "$NOTION_TOKEN" ] || [ -z "$EMDASH_TOKEN" ]; then
+            echo "::notice::Not set up yet: add the NOTION_TOKEN, NOTION_DATABASE_ID, EMDASH_URL and EMDASH_TOKEN secrets."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v5
+        if: steps.ready.outputs.ok == 'true'
+
+      - uses: actions/setup-node@v5
+        if: steps.ready.outputs.ok == 'true'
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        if: steps.ready.outputs.ok == 'true'
+        run: npm ci
+
+      - name: Send pages from Notion
+        if: steps.ready.outputs.ok == 'true'
+        env:
+          MODE: ${{ inputs.mode || 'publish' }}
+        run: |
+          case "$MODE" in
+            publish) npm start -- --publish ;;
+            draft) npm start -- --send ;;
+            *) npm start ;;
+          esac
