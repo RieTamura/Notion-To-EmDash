@@ -155,19 +155,39 @@ function notionErrorText(lang: Lang, result: Record<string, unknown>): string {
 	return String(result.message ?? "");
 }
 
-function summary(t: Text, lang: Lang, result: LastRun["result"]): string {
+const PHASES = {
+	ja: { read: "本文を読んでいます", images: "画像を上げています", terms: "カテゴリとタグ", save: "記事を保存します", mark: "Notion に印を付けます" },
+	en: { read: "reading the page", images: "uploading images", terms: "categories and tags", save: "saving the post", mark: "marking the page in Notion" },
+} as const;
+
+export function phaseLabel(lang: Lang, phase: unknown): string {
+	return (PHASES[lang] as Record<string, string>)[String(phase)] ?? String(phase);
+}
+
+/** One line about a run or check, for the "Result" field. */
+export function summary(t: Text, lang: Lang, result: LastRun["result"]): string {
 	const ja = lang === "ja";
 	switch (result.status) {
 		case "sent":
 			return t.sent(String(result.title));
 		case "working":
-			return ja ? `「${result.title}」を送っている途中（${result.phase}）` : `Sending "${result.title}" (${result.phase})`;
+			return ja
+				? `「${result.title}」を送っている途中（${phaseLabel(lang, result.phase)}）`
+				: `Sending "${result.title}" (${phaseLabel(lang, result.phase)})`;
 		case "nothing_to_send":
 			return ja ? "送るページはありませんでした" : "Nothing to send";
 		case "ok":
 			return t.checkOk(Number(result.toSend), Number(result.waitingForEdit));
+		case "not_configured":
+			return ja ? "トークンかデータベースが保存されていません" : "The token or the database is not saved";
+		case "notion_error":
+			return ja ? "Notion に断られました" : "Notion refused the request";
+		case "schema_invalid":
+			return ja ? "データベースの項目が足りません" : "The database is missing properties";
+		case "failed":
+			return ja ? `「${result.title}」を送れませんでした` : `Could not send "${result.title}"`;
 		default:
-			return result.status;
+			return ja ? "不明な結果" : "Unknown result";
 	}
 }
 
@@ -193,7 +213,7 @@ export function renderPage(state: PageState, locale: string | undefined, toast?:
 		},
 	];
 	if (state.last) fields.push({ label: t.result, value: summary(t, lang, state.last.result) });
-	if (state.job) fields.push({ label: t.job, value: `${state.job.title}（${state.job.phase}）` });
+	if (state.job) fields.push({ label: t.job, value: `${state.job.title}（${phaseLabel(lang, state.job.phase)}）` });
 	blocks.push({ type: "fields", fields });
 
 	if (state.failed.length > 0) {

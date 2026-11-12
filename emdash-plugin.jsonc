@@ -11,6 +11,12 @@
 	"description": "Posts pages from a Notion database to your EmDash site.",
 	"keywords": ["notion", "import", "posts", "sync", "cms"],
 	"repo": "https://github.com/RieTamura/Notion-To-EmDash",
+	"release": {
+		"artifacts": {
+			"icon": { "file": "./images/icon.png" },
+			"banner": { "file": "./images/banner.png" }
+		}
+	},
 
 	// Trust contract — what runtime APIs the plugin asks for.
 	// Changing these between releases requires a version bump because
