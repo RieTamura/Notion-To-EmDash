@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { ConfigError, loadConfig } from "./config.ts";
+import { ConfigError, loadConfig, loadThumbnailConfig } from "./config.ts";
 import { convertBlocks } from "../shared/convert.ts";
 import { EmDashApi, EmDashError } from "./emdash.ts";
 import { ImageDownloadError } from "./media.ts";
@@ -9,8 +9,47 @@ import { checkSchema, missingOptional, NotionClient, NotionError, needsSending, 
 import { findPostId, PostNotFoundError } from "./publish.ts";
 import { sendArticle } from "./send.ts";
 import { UnknownCategoryError } from "./taxonomy.ts";
+import { fillThumbnail, postsWithoutImage } from "./thumbnails.ts";
+
+/**
+ * --thumbnails: only draws thumbnails for posts without a featured image (for sites
+ * where the Notion To EmDash plugin sends the posts). Add --send to draw them.
+ */
+async function thumbnailsOnly(): Promise<void> {
+	const config = loadThumbnailConfig();
+	const api = new EmDashApi({ siteUrl: config.emdashUrl, token: config.emdashToken });
+	const posts = await postsWithoutImage(api, config.skip);
+	const send = process.argv.includes("--send") || process.argv.includes("--publish");
+	console.log(`${posts.length} post(s) without a featured image${config.skip.length ? ` (skipping slugs that start with ${config.skip.join(", ")})` : ""}`);
+	if (!send) {
+		for (const post of posts) console.log(`- ${post.title} (${post.status}, ${post.slug ?? post.id})`);
+		if (posts.length) console.log("Dry run: add --send to draw their thumbnails");
+		return;
+	}
+	for (const post of posts.slice(0, config.maxPosts)) {
+		try {
+			const outcome = await fillThumbnail(api, post);
+			const message = {
+				made: outcome.kind === "made" && outcome.published ? "drew the thumbnail and published it" : "drew the thumbnail",
+				kept: "has a featured image now; left as it is",
+				"no-plugin": "not drawn: the site does not have the Auto Thumbnail Design plugin",
+				"pending-changes": "not drawn: the post has unpublished changes, which publishing the thumbnail would put live",
+			}[outcome.kind];
+			console.log(`- ${post.title}: ${message}`);
+			if (outcome.kind === "no-plugin") break;
+		} catch (error) {
+			if (!isExpected(error)) throw error;
+			console.error(`- ${post.title}: ${(error as Error).message}`);
+			process.exitCode = 1;
+		}
+	}
+	if (posts.length > config.maxPosts) {
+		console.log(`  ${posts.length - config.maxPosts} more will be drawn in later runs`);
+	}
+}
 
 async function main(): Promise<void> {
+	if (process.argv.includes("--thumbnails")) return thumbnailsOnly();
 	const config = loadConfig();
 	const notion = new NotionClient({ token: config.notionToken });
 

@@ -47,21 +47,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
 		throw new ConfigError("NOTION_DATABASE_ID must be a database ID (32 letters and digits) or a database link");
 	}
 
-	let url: URL;
-	try {
-		url = new URL(env.EMDASH_URL!.trim());
-	} catch {
-		throw new ConfigError("EMDASH_URL is not a valid URL");
-	}
-	if (url.protocol !== "https:" && url.hostname !== "localhost") {
-		throw new ConfigError("EMDASH_URL must start with https://");
-	}
-
-	const rawMax = env.MAX_POSTS?.trim() || "5";
-	const maxPosts = Number(rawMax);
-	if (!Number.isInteger(maxPosts) || maxPosts < 1) {
-		throw new ConfigError("MAX_POSTS must be a whole number of 1 or more");
-	}
+	const url = siteUrl(env);
+	const maxPosts = readMaxPosts(env);
 
 	const rawThumbnail = env.AUTO_THUMBNAIL?.trim().toLowerCase() || "true";
 	if (rawThumbnail !== "true" && rawThumbnail !== "false") {
@@ -82,5 +69,50 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
 		maxPosts,
 		autoThumbnail: rawThumbnail === "true",
 		properties,
+	};
+}
+
+function siteUrl(env: Record<string, string | undefined>): URL {
+	let url: URL;
+	try {
+		url = new URL(env.EMDASH_URL!.trim());
+	} catch {
+		throw new ConfigError("EMDASH_URL is not a valid URL");
+	}
+	if (url.protocol !== "https:" && url.hostname !== "localhost") {
+		throw new ConfigError("EMDASH_URL must start with https://");
+	}
+	return url;
+}
+
+function readMaxPosts(env: Record<string, string | undefined>): number {
+	const rawMax = env.MAX_POSTS?.trim() || "5";
+	const maxPosts = Number(rawMax);
+	if (!Number.isInteger(maxPosts) || maxPosts < 1) {
+		throw new ConfigError("MAX_POSTS must be a whole number of 1 or more");
+	}
+	return maxPosts;
+}
+
+/** Settings for --thumbnails, which only talks to EmDash: no Notion settings are needed. */
+export interface ThumbnailConfig {
+	emdashUrl: string;
+	emdashToken: string;
+	/** Most thumbnails drawn in one run. */
+	maxPosts: number;
+	/** Slug beginnings (THUMBNAIL_SKIP, comma separated) of posts that are left without a thumbnail. */
+	skip: string[];
+}
+
+export function loadThumbnailConfig(env: Record<string, string | undefined> = process.env): ThumbnailConfig {
+	const missing = (["EMDASH_URL", "EMDASH_TOKEN"] as const).filter((name) => !env[name]?.trim());
+	if (missing.length > 0) {
+		throw new ConfigError(`Missing settings: ${missing.join(", ")}`);
+	}
+	return {
+		emdashUrl: siteUrl(env).origin,
+		emdashToken: env.EMDASH_TOKEN!.trim(),
+		maxPosts: readMaxPosts(env),
+		skip: (env.THUMBNAIL_SKIP ?? "").split(",").map((prefix) => prefix.trim()).filter(Boolean),
 	};
 }
