@@ -1,4 +1,4 @@
-import type { PropertyNames } from "./config.ts";
+import type { PropertyNames } from "./properties.ts";
 import type { NotionBlock } from "./convert.ts";
 
 export const NOTION_API = "https://api.notion.com/v1";

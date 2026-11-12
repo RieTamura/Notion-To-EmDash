@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { convertBlocks, type NotionBlock } from "../src/convert.ts";
-import { EmDashApi, EmDashError, type FetchLike } from "../src/emdash.ts";
-import { downloadImage, fileNameFromUrl, ImageDownloadError } from "../src/media.ts";
-import type { Article } from "../src/notion.ts";
-import type { ImageBlock } from "../src/portable-text.ts";
-import { findPostId, PostNotFoundError, sendPost } from "../src/publish.ts";
-import { sendArticle } from "../src/send.ts";
-import { resolveTaxonomies, UnknownCategoryError } from "../src/taxonomy.ts";
+import { convertBlocks, type NotionBlock } from "../../src/shared/convert.ts";
+import { EmDashApi, EmDashError, type FetchLike } from "../../src/action/emdash.ts";
+import { downloadImage, fileNameFromUrl, ImageDownloadError } from "../../src/action/media.ts";
+import type { Article } from "../../src/shared/notion.ts";
+import type { ImageBlock } from "../../src/shared/portable-text.ts";
+import { findPostId, PostNotFoundError, sendPost } from "../../src/action/publish.ts";
+import { sendArticle } from "../../src/action/send.ts";
+import { resolveTaxonomies, UnknownCategoryError } from "../../src/action/taxonomy.ts";
 
 function json(body: unknown, status = 200): Response {
 	return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });

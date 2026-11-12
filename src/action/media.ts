@@ -1,7 +1,7 @@
 /** Images: reading them from Notion, and the shapes EmDash keeps them in. Ported from Post To EmDash's media.ts. */
 
 import type { FetchLike } from "./emdash.ts";
-import type { ImageBlock } from "./portable-text.ts";
+import type { ImageBlock } from "../shared/portable-text.ts";
 
 /** A media item returned by POST /media. */
 export interface MediaItem {
@@ -30,7 +30,7 @@ export interface FeaturedImageValue {
 
 export interface ImageFile {
 	name: string;
-	data: Uint8Array;
+	data: Uint8Array<ArrayBuffer>;
 	type: string;
 }
 

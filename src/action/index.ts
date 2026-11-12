@@ -1,11 +1,11 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ConfigError, loadConfig } from "./config.ts";
-import { convertBlocks } from "./convert.ts";
+import { convertBlocks } from "../shared/convert.ts";
 import { EmDashApi, EmDashError } from "./emdash.ts";
 import { ImageDownloadError } from "./media.ts";
-import type { Block } from "./portable-text.ts";
-import { checkSchema, missingOptional, NotionClient, NotionError, needsSending, parsePage } from "./notion.ts";
+import type { Block } from "../shared/portable-text.ts";
+import { checkSchema, missingOptional, NotionClient, NotionError, needsSending, parsePage } from "../shared/notion.ts";
 import { findPostId, PostNotFoundError } from "./publish.ts";
 import { sendArticle } from "./send.ts";
 import { UnknownCategoryError } from "./taxonomy.ts";

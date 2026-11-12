@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_PROPERTY_NAMES } from "../src/config.ts";
+import { DEFAULT_PROPERTY_NAMES } from "../../src/action/config.ts";
 import {
 	type Article,
 	checkSchema,
@@ -12,7 +12,7 @@ import {
 	needsSending,
 	parsePage,
 	type SchemaProperty,
-} from "../src/notion.ts";
+} from "../../src/shared/notion.ts";
 
 const names = DEFAULT_PROPERTY_NAMES;
 

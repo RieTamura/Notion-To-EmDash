@@ -85,7 +85,7 @@ export async function drawThumbnail(
 	text: { title: string; date: string },
 	siteUrl: string,
 	fetch: Fetcher = fetchFetcher,
-): Promise<Uint8Array> {
+): Promise<Uint8Array<ArrayBuffer>> {
 	const { width, height } = design;
 	const canvas = createCanvas(width, height);
 	const ctx = canvas.getContext("2d");

@@ -1,10 +1,10 @@
 /** Sends one Notion article to EmDash: images first, then the post. */
 
 import { type Draw, makeAutoThumbnail } from "./auto-thumbnail.ts";
-import type { ConvertResult } from "./convert.ts";
+import type { ConvertResult } from "../shared/convert.ts";
 import type { EmDashApi, FetchLike } from "./emdash.ts";
 import { downloadImage, type FeaturedImageValue, fillImageBlock, type MediaItem, toFeaturedImage } from "./media.ts";
-import type { Article } from "./notion.ts";
+import type { Article } from "../shared/notion.ts";
 import { type PostResult, postUrl, sendPost } from "./publish.ts";
 import { resolveTaxonomies } from "./taxonomy.ts";
 

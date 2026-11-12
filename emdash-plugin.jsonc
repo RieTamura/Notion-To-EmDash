@@ -1,0 +1,70 @@
+{
+	"$schema": "./node_modules/@emdash-cms/plugin-cli/schemas/emdash-plugin.schema.json",
+
+	"slug": "notion-to-emdash",
+	"publisher": "did:plc:myrtyr2rsjiivzlp5m6qevv5",
+
+	"license": "MIT",
+	"author": { "name": "Rie Tamura", "url": "https://bsky.app/profile/rietamura.com" },
+	"security": { "url": "https://github.com/RieTamura/Notion-To-EmDash/issues" },
+	"name": "Notion To EmDash",
+	"description": "Posts pages from a Notion database to your EmDash site.",
+	"keywords": ["notion", "import", "posts", "sync", "cms"],
+	"repo": "https://github.com/RieTamura/Notion-To-EmDash",
+
+	// Trust contract — what runtime APIs the plugin asks for.
+	// Changing these between releases requires a version bump because
+	// installed users have consented to the old contract.
+	"capabilities": [
+		// Read the Notion database and the images stored in Notion.
+		"network:request",
+		// Check that the posts collection has the fields the plugin writes.
+		"schema:read",
+		// Find, create and update posts, then publish them.
+		"content:write",
+		"content:publish",
+		// Create categories and tags, and attach them to posts.
+		"taxonomies:write",
+		// Upload the images from Notion to the media library.
+		"media:write"
+	],
+	"allowedHosts": [
+		"api.notion.com",
+		// Where Notion stores uploaded images (signed links that expire after an hour).
+		"prod-files-secure.s3.us-west-2.amazonaws.com"
+	],
+	"storage": {
+		// One record per Notion page sent, keyed by the page ID.
+		"pages": { "indexes": ["sentAt"] }
+	},
+
+	"admin": {
+		"settingsSchema": {
+			"notionToken": {
+				"label": "Notion integration token",
+				"description": "The internal integration secret from notion.so/profile/integrations. Connect the integration to the database.",
+				"type": "secret"
+			},
+			"databaseId": {
+				"label": "Notion database",
+				"description": "The database link or ID.",
+				"type": "string"
+			},
+			"mode": {
+				"label": "Send pages as",
+				"type": "select",
+				"options": [
+					{ "value": "publish", "label": "Published posts" },
+					{ "value": "draft", "label": "Drafts" }
+				],
+				"default": "publish"
+			},
+			"schedule": {
+				"label": "How often to check",
+				"description": "A cron expression. The site's own Cron Trigger is the shortest possible interval.",
+				"type": "string",
+				"default": "*/5 * * * *"
+			}
+		}
+	}
+}

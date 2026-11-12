@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { codeLanguage, convertBlocks, type NotionBlock, type RichTextItem } from "../src/convert.ts";
-import type { TableBlock, TextBlock } from "../src/portable-text.ts";
+import { codeLanguage, convertBlocks, type NotionBlock, type RichTextItem } from "../../src/shared/convert.ts";
+import type { TableBlock, TextBlock } from "../../src/shared/portable-text.ts";
 
 function rt(text: string, options: Partial<RichTextItem> & { link?: string } = {}): RichTextItem {
 	const { link, ...rest } = options;

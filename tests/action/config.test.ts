@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ConfigError, DEFAULT_PROPERTY_NAMES, loadConfig, parseNotionId } from "../src/config.ts";
+import { ConfigError, DEFAULT_PROPERTY_NAMES, loadConfig, parseNotionId } from "../../src/action/config.ts";
 
 const ID = "0123456789abcdef0123456789abcdef";
 

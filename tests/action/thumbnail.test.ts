@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fontCssUrl, formatDate, isAutoThumbnail, logoLayout, metaLayout, parseFontCss, readDesign, splitTokens, wrapText } from '../src/thumbnail.ts';
+import { fontCssUrl, formatDate, isAutoThumbnail, logoLayout, metaLayout, parseFontCss, readDesign, splitTokens, wrapText } from '../../src/action/thumbnail.ts';
 
 /** 1文字を1の幅として測る */
 const measure = (s: string) => [...s].length;

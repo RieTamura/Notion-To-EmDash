@@ -2,7 +2,7 @@
 
 import type { ApiLike } from "./emdash.ts";
 import type { FeaturedImageValue } from "./media.ts";
-import type { Block } from "./portable-text.ts";
+import type { Block } from "../shared/portable-text.ts";
 
 export interface PostInput {
 	/** The post's ID from an earlier send. Without it, a new post is made. */

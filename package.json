@@ -1,7 +1,7 @@
 {
 	"name": "notion-to-emdash",
-	"version": "0.0.0",
-	"description": "Posts pages from a Notion database to an EmDash site, with auto thumbnails. Runs on GitHub Actions.",
+	"version": "0.1.0",
+	"description": "Posts pages from a Notion database to an EmDash site. An EmDash plugin, plus a GitHub Actions tool that also draws auto thumbnails.",
 	"private": true,
 	"type": "module",
 	"license": "MIT",
@@ -13,17 +13,41 @@
 	"engines": {
 		"node": ">=24"
 	},
+	"main": "dist/index.mjs",
+	"exports": {
+		".": {
+			"import": "./dist/index.mjs",
+			"types": "./dist/index.d.mts"
+		},
+		"./sandbox": "./dist/plugin.mjs"
+	},
+	"files": [
+		"dist",
+		"emdash-plugin.jsonc"
+	],
 	"scripts": {
-		"start": "node --env-file-if-exists=.env src/index.ts",
+		"start": "node --env-file-if-exists=.env src/action/index.ts",
+		"validate": "emdash-plugin validate",
+		"build": "emdash-plugin build",
+		"prepare": "emdash-plugin build",
+		"dev": "emdash-plugin dev",
 		"typecheck": "tsc",
-		"test": "tsc && vitest run"
+		"test": "tsc && emdash-plugin validate && vitest run",
+		"bundle": "emdash-plugin bundle",
+		"login": "emdash-plugin login",
+		"publish": "emdash-plugin publish",
+		"release:setup": "emdash-plugin release setup"
+	},
+	"peerDependencies": {
+		"emdash": ">=1.3.0"
 	},
 	"devDependencies": {
+		"@emdash-cms/plugin-cli": "0.13.6",
+		"@emdash-cms/plugin-test": "^0.2.12",
+		"@napi-rs/canvas": "1.0.13",
 		"@types/node": "^24.19.2",
+		"emdash": "^1.3.0",
 		"typescript": "^5.9.3",
-		"vitest": "^5.1.0"
-	},
-	"dependencies": {
-		"@napi-rs/canvas": "1.0.13"
+		"vitest": "^4.1.0"
 	}
 }

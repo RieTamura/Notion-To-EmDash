@@ -67,7 +67,7 @@ export class EmDashApi implements ApiLike {
 	 * Uploads an image to the media library. The same image is not stored twice:
 	 * with `deduplicate`, EmDash returns the earlier copy.
 	 */
-	async uploadImage(file: { name: string; data: Uint8Array; type: string }): Promise<MediaItem> {
+	async uploadImage(file: { name: string; data: Uint8Array<ArrayBuffer>; type: string }): Promise<MediaItem> {
 		const form = new FormData();
 		form.append("deduplicate", "true");
 		form.append("file", new Blob([file.data], { type: file.type }), file.name);
