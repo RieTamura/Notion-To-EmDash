@@ -20,7 +20,7 @@ Notion のデータベースに書いたページを、[EmDash](https://emdashcm
 | 画像のない記事 | アイキャッチなし | 自動サムネイルが付く | 自動サムネイルが付く |
 | Notion の「スラッグ」で URL を決める | できない（タイトルから作られる） | できない（タイトルから作られる） | できる |
 
-自動サムネイルは [Auto Thumbnail Design](https://github.com/RieTamura/Auto-Thumbnail) プラグインのデザインで描くので、サイトにそのプラグインも必要です。1 枚描くのに CPU を 30〜150 ミリ秒使い、プラグインの 1 回の実行で使える量を超えるため、プラグインでは描きません。
+自動サムネイルは [Auto Thumbnail Design](https://github.com/RieTamura/Auto-Thumbnail) プラグインのデザインで描くので、サイトにそのプラグインも必要です。**そのプラグインは GitHub から入れてください。** レジストリから入れると、自動で作った ID で動くため、デザインが見つからず、サムネイルが描かれません（[emdash-cms/emdash#4335](https://github.com/emdash-cms/emdash/issues/4335)）。1 枚描くのに CPU を 30〜150 ミリ秒使い、プラグインの 1 回の実行で使える量を超えるため、プラグインでは描きません。
 
 ## できること
 
@@ -131,7 +131,7 @@ npx wrangler secret put EMDASH_ENCRYPTION_KEY
 
 ### ルート
 
-どれも管理者だけが使えます。
+どれも管理者だけが使えます。URL は GitHub から入れた場合のものです。レジストリから入れた場合は、`notion-to-emdash` の代わりに自動で作った ID（`r_…`）になります。ID は、管理画面のプラグインのページの URL に出ます（[emdash-cms/emdash#4335](https://github.com/emdash-cms/emdash/issues/4335)）。
 
 | ルート | すること |
 | --- | --- |

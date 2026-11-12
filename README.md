@@ -20,7 +20,7 @@ This repository holds two tools that share the Notion reading and conversion cod
 | Posts with no image | No featured image | Get an automatic thumbnail | Get an automatic thumbnail |
 | URL (slug) from the Notion "スラッグ" property | No: made from the title | No: made from the title | Yes |
 
-Automatic thumbnails use the design from the [Auto Thumbnail Design](https://github.com/RieTamura/Auto-Thumbnail) plugin, so that plugin must be on the site too. Drawing one takes 30–150 ms of CPU, more than a plugin run has, which is why the plugin does not draw them.
+Automatic thumbnails use the design from the [Auto Thumbnail Design](https://github.com/RieTamura/Auto-Thumbnail) plugin, so that plugin must be on the site too, **installed from GitHub**: a registry install is served under a generated ID, so the design cannot be found and no thumbnail is drawn ([emdash-cms/emdash#4335](https://github.com/emdash-cms/emdash/issues/4335)). Drawing one takes 30–150 ms of CPU, more than a plugin run has, which is why the plugin does not draw them.
 
 ## What it does
 
@@ -131,7 +131,7 @@ The page also shows the last run, the page being sent, and pages that could not 
 
 ### Routes
 
-All are admin-only.
+All are admin-only. The paths are for a GitHub install. A registry install is served under a generated ID (`r_…`) instead of `notion-to-emdash`; the ID shows in the admin URL of the plugin's page ([emdash-cms/emdash#4335](https://github.com/emdash-cms/emdash/issues/4335)).
 
 | Route | Does |
 | --- | --- |
