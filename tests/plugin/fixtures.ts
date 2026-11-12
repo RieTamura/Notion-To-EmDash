@@ -89,8 +89,19 @@ export async function respondDatabase(h: PluginRuntimeTestHost) {
 	await h.http.respond(`${API}/data_sources/${SOURCE_ID}`, json(SCHEMA));
 }
 
-export async function respondPages(h: PluginRuntimeTestHost, pages: unknown[]) {
+/**
+ * The database query, and for each page the two requests of the write-back:
+ * reading the page again (unchanged) and writing the mark.
+ */
+export async function respondPages(h: PluginRuntimeTestHost, pages: unknown[], options: { mark?: boolean } = {}) {
 	await h.http.respond(`${API}/data_sources/${SOURCE_ID}/query`, json({ results: pages, has_more: false, next_cursor: null }));
+	if (options.mark === false) return;
+	for (const notionPage of pages as Array<{ id: string }>) await respondMark(h, notionPage);
+}
+
+export async function respondMark(h: PluginRuntimeTestHost, notionPage: { id: string }, patch: Response = json(notionPage)) {
+	await h.http.respond(`${API}/pages/${notionPage.id}`, json(notionPage));
+	await h.http.respond(`${API}/pages/${notionPage.id}`, patch);
 }
 
 export async function respondChildren(h: PluginRuntimeTestHost, blockId: string, results: unknown[]) {

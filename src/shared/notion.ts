@@ -194,6 +194,11 @@ export class NotionClient {
 	 * This is the last thing done to a page, so the tool becomes its last editor
 	 * (see needsSending).
 	 */
+	/** One page, with its properties and who edited it last. */
+	async getPage(pageId: string): Promise<NotionPage> {
+		return this.request<NotionPage>("GET", `/pages/${pageId}`);
+	}
+
 	async writeBack(pageId: string, names: PropertyNames, emdashUrl: string, sentAt: Date): Promise<void> {
 		await this.request("PATCH", `/pages/${pageId}`, {
 			properties: {

@@ -8,13 +8,14 @@
  *   images → upload the images stored in Notion, one at a time
  *   terms  → find the category, find or create the tags
  *   save   → create or update the post, set its terms, publish it
+ *   mark   → write the post's URL and the time back to the Notion page
  */
 
 import type { PluginContext } from "emdash/plugin";
 
 import { type ConvertResult, convertBlocks, type NotionBlock, type SkippedBlock } from "../shared/convert.ts";
 import { imageFileName, shortUrl } from "../shared/image-name.ts";
-import { type Article, checkSchema, NotionClient, needsSending, parsePage } from "../shared/notion.ts";
+import { type Article, checkSchema, NotionClient, NotionError, needsSending, parsePage } from "../shared/notion.ts";
 import type { Block, ImageBlock } from "../shared/portable-text.ts";
 import { DEFAULT_PROPERTY_NAMES, type PropertyNames } from "../shared/properties.ts";
 import { type Budget, OutOfBudget } from "./budget.ts";
@@ -84,13 +85,36 @@ export interface Job {
 	/** The post this page was sent to before. Undefined until the post is made. */
 	contentId?: string;
 	created?: boolean;
-	phase: "read" | "images" | "terms" | "save";
+	phase: "read" | "images" | "terms" | "save" | "mark";
 	queue: QueuedRead[];
 	children: Record<string, NotionBlock[]>;
 	blocks?: Block[];
 	skipped?: SkippedBlock[];
 	images: Record<string, ImageState | null>;
 	terms?: { category?: string[]; tag?: string[]; tagsDone?: boolean };
+	/** What was saved, kept for writing the mark back to Notion. */
+	sent?: SentResult;
+}
+
+export interface SentResult {
+	status: "sent";
+	pageId: string;
+	title: string;
+	contentId: string;
+	slug: string | null;
+	/** The post's URL, as written back to Notion. */
+	url: string | null;
+	created: boolean;
+	published: boolean;
+	images: { uploaded: number; links: number; dropped: string[] };
+	skipped: SkippedBlock[];
+	/**
+	 * Whether the URL and the time were written back to Notion. When the page
+	 * was edited while it was being sent, the mark is left off so the next
+	 * run sends the edit too.
+	 */
+	marked: boolean;
+	note?: string;
 }
 
 export type RunResult =
@@ -98,17 +122,7 @@ export type RunResult =
 	| { status: "nothing_to_send" }
 	| { status: "working"; pageId: string; title: string; phase: Job["phase"] }
 	| { status: "failed"; pageId: string; title: string; reason: string }
-	| {
-			status: "sent";
-			pageId: string;
-			title: string;
-			contentId: string;
-			slug: string | null;
-			created: boolean;
-			published: boolean;
-			images: { uploaded: number; links: number; dropped: string[] };
-			skipped: SkippedBlock[];
-	  };
+	| SentResult;
 
 /** A page that cannot be sent until someone edits it in Notion. */
 class PageFailure extends Error {
@@ -209,6 +223,8 @@ async function step(
 			return termsStep(ctx, job, budget);
 		case "save":
 			return saveStep(ctx, job, settings, budget, now);
+		case "mark":
+			return markStep(ctx, notion, job, settings, budget, now);
 	}
 }
 
@@ -467,7 +483,7 @@ async function termsStep(ctx: PluginContext, job: Job, budget: Budget): Promise<
 /** Calls for saving: write the post, set two taxonomies (3 each), publish (2), remember the page. */
 const SAVE_CALLS = 1 + 6 + 2 + 1;
 
-async function saveStep(ctx: PluginContext, job: Job, settings: Settings, budget: Budget, now: Date): Promise<"done" | "waiting" | RunResult> {
+async function saveStep(ctx: PluginContext, job: Job, settings: Settings, budget: Budget, now: Date): Promise<"done" | "waiting"> {
 	if (!budget.has(SAVE_CALLS)) return "waiting";
 	const content = ctx.content!;
 	const { article } = job;
@@ -518,12 +534,13 @@ async function saveStep(ctx: PluginContext, job: Job, settings: Settings, budget
 	} satisfies PageRecord);
 
 	const states = Object.values(job.images);
-	return {
+	job.sent = {
 		status: "sent",
 		pageId: job.pageId,
 		title: article.title,
 		contentId: job.contentId,
 		slug,
+		url: slug ? postUrl(ctx.site.url, slug) : null,
 		created: job.created,
 		published: settings.publish,
 		images: {
@@ -532,7 +549,69 @@ async function saveStep(ctx: PluginContext, job: Job, settings: Settings, budget
 			dropped: states.flatMap((s) => (s?.kind === "dropped" ? [s.reason] : [])),
 		},
 		skipped: job.skipped ?? [],
+		marked: false,
 	};
+	// Saving the job between here and the mark keeps a retry from sending the post twice.
+	job.blocks = undefined;
+	job.images = {};
+	job.phase = "mark";
+	return "done";
+}
+
+/** The post's page URL, the same as the GitHub Actions tool writes. */
+export function postUrl(siteUrl: string, slug: string): string {
+	return `${siteUrl.replace(/\/+$/, "")}/${COLLECTION}/${slug}`;
+}
+
+/* ---------- mark ---------- */
+
+/** Calls for the mark: read the page, write the mark, and maybe record a failure. */
+const MARK_CALLS = 3;
+
+/**
+ * Writes the post's URL and the time back to Notion. This makes the plugin
+ * the page's last editor, which is how a later edit by a person is told
+ * apart (see needsSending).
+ */
+async function markStep(
+	ctx: PluginContext,
+	notion: NotionClient,
+	job: Job,
+	settings: Settings,
+	budget: Budget,
+	now: Date,
+): Promise<"waiting" | RunResult> {
+	const sent = job.sent!;
+	if (!sent.url) return { ...sent, note: "The post has no slug, so nothing was written back to Notion" };
+	if (!budget.has(MARK_CALLS)) return "waiting";
+
+	const names = settings.properties ?? DEFAULT_PROPERTY_NAMES;
+	try {
+		const page = await notion.getPage(job.pageId);
+		const edited =
+			page.last_edited_time !== job.article.lastEditedTime || page.last_edited_by?.id !== job.article.lastEditedBy;
+		if (edited) {
+			// Marking it now would hide the newer edit. Without the mark, the next run sends the page again.
+			return { ...sent, note: "The page was edited while it was being sent; the next run sends the edit" };
+		}
+		await notion.writeBack(job.pageId, names, sent.url, now);
+		return { ...sent, marked: true };
+	} catch (error) {
+		if (!(error instanceof NotionError)) throw error;
+		// Without the mark the page would be sent again on every run, so it waits until someone edits it.
+		const reason = `Sent, but could not write the URL back to Notion (${error.message}). Put ${sent.url} in "${names.emdashUrl}" by hand`;
+		ctx.log.warn("Could not mark a Notion page as sent", { pageId: job.pageId, status: error.status, message: error.message });
+		budget.take(1, 0);
+		const pages = ctx.storage.pages!;
+		await pages.put(job.pageId, {
+			contentId: sent.contentId,
+			slug: sent.slug ?? undefined,
+			sentAt: now.toISOString(),
+			failedEdit: job.article.lastEditedTime,
+			error: reason,
+		} satisfies PageRecord);
+		return { ...sent, note: reason };
+	}
 }
 
 /** Makes the post's terms in one taxonomy the ones from Notion. A taxonomy left empty in Notion is not touched. */
