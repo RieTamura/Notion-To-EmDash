@@ -41,6 +41,8 @@ export interface Settings {
 
 /** What the plugin remembers about a Notion page, keyed by page ID. */
 export interface PageRecord {
+	/** The page title when it was last sent or failed, for the admin page. */
+	title?: string;
 	contentId?: string;
 	slug?: string;
 	sentAt?: string;
@@ -201,7 +203,12 @@ async function failPage(ctx: PluginContext, job: Job, reason: string, budget: Bu
 	budget.take(2, 1);
 	const pages = ctx.storage.pages!;
 	const record = ((await pages.get(job.pageId)) ?? {}) as PageRecord;
-	await pages.put(job.pageId, { ...record, failedEdit: job.article.lastEditedTime, error: reason } satisfies PageRecord);
+	await pages.put(job.pageId, {
+		...record,
+		title: job.article.title,
+		failedEdit: job.article.lastEditedTime,
+		error: reason,
+	} satisfies PageRecord);
 	return { status: "failed", pageId: job.pageId, title: job.article.title, reason };
 }
 
@@ -226,6 +233,46 @@ async function step(
 		case "mark":
 			return markStep(ctx, notion, job, settings, budget, now);
 	}
+}
+
+/* ---------- check ---------- */
+
+export type CheckResult =
+	| { status: "ok"; toSend: number; waitingForEdit: number }
+	| { status: "schema_invalid"; problems: string[] };
+
+/**
+ * Reads the database afresh (forgetting the cached IDs) and counts the pages
+ * the next runs would send. Changes nothing but the cache.
+ */
+export async function checkNotion(ctx: PluginContext, settings: Settings, budget: Budget): Promise<CheckResult> {
+	const names = settings.properties ?? DEFAULT_PROPERTY_NAMES;
+	const notion = new NotionClient({
+		token: settings.notionToken,
+		fetch: (url, init) => {
+			budget.take();
+			return ctx.http!.fetch(url, init);
+		},
+	});
+	budget.take();
+	await ctx.kv.delete(NOTION_KEY);
+	const ids = await notionIds(ctx, notion, settings, names, budget);
+	if ("problems" in ids) return { status: "schema_invalid", problems: ids.problems };
+	const pages = await notion.queryPublishedPages(ids.dataSourceId, names.publish);
+	const candidates = pages
+		.filter((page) => !page.in_trash)
+		.map((page) => parsePage(page, names))
+		.filter((article) => needsSending(article, ids.botUserId));
+	if (candidates.length === 0) return { status: "ok", toSend: 0, waitingForEdit: 0 };
+	budget.take();
+	const records = (await ctx.storage.pages!.getMany(candidates.map((article) => article.pageId))) as Map<string, PageRecord>;
+	const waiting = candidates.filter((article) => records.get(article.pageId)?.failedEdit === article.lastEditedTime).length;
+	return { status: "ok", toSend: candidates.length - waiting, waitingForEdit: waiting };
+}
+
+/** Forgets the IDs read from Notion, for when the token or the database changes. */
+export async function forgetNotion(ctx: PluginContext): Promise<void> {
+	await ctx.kv.delete(NOTION_KEY);
 }
 
 /* ---------- find ---------- */
@@ -528,6 +575,7 @@ async function saveStep(ctx: PluginContext, job: Job, settings: Settings, budget
 
 	budget.take(1, 1);
 	await ctx.storage.pages!.put(job.pageId, {
+		title: article.title,
 		contentId: job.contentId,
 		slug: slug ?? undefined,
 		sentAt: now.toISOString(),
@@ -604,6 +652,7 @@ async function markStep(
 		budget.take(1, 0);
 		const pages = ctx.storage.pages!;
 		await pages.put(job.pageId, {
+			title: sent.title,
 			contentId: sent.contentId,
 			slug: sent.slug ?? undefined,
 			sentAt: now.toISOString(),

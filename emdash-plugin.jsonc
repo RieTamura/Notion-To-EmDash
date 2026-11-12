@@ -39,6 +39,9 @@
 	},
 
 	"admin": {
+		// The settings and status page. Its form writes the same settings as the schema below,
+		// which tells EmDash to encrypt the token.
+		"pages": [{ "path": "/settings", "label": "Notion To EmDash", "icon": "settings" }],
 		"settingsSchema": {
 			"notionToken": {
 				"label": "Notion integration token",
