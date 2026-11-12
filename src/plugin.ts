@@ -2,6 +2,8 @@ import type { PluginContext, SandboxedPlugin } from "emdash/plugin";
 
 import { NotionError } from "./shared/notion.ts";
 import { parseNotionId } from "./shared/properties.ts";
+import { Budget } from "./plugin/budget.ts";
+import { type RunResult, runOnce } from "./plugin/job.ts";
 import { notionClient, readNextPage } from "./plugin/source.ts";
 
 const CRON_TASK = "sync";
@@ -15,7 +17,8 @@ const CRON_TIMEOUT_MS = 120_000;
 
 export type SyncResult =
 	| { status: "not_configured"; missing: string[] }
-	| { status: "idle" };
+	| { status: "notion_error"; httpStatus: number; code: string | undefined; message: string }
+	| (RunResult & { calls: number });
 
 export type PreviewResult =
 	| { status: "not_configured"; missing: string[] }
@@ -42,6 +45,7 @@ async function readSettings(ctx: PluginContext) {
 		notionToken: text("notionToken"),
 		databaseId: parseNotionId(text("databaseId")),
 		schedule: text("schedule") || DEFAULT_SCHEDULE,
+		publish: text("mode") !== "draft",
 	};
 }
 
@@ -60,13 +64,30 @@ function missingSettings(settings: Awaited<ReturnType<typeof readSettings>>): st
 	return [...(settings.notionToken ? [] : ["notionToken"]), ...(settings.databaseId ? [] : ["databaseId"])];
 }
 
-export async function sync(ctx: PluginContext): Promise<SyncResult> {
+/** One run: carries the current page one or more steps further. */
+export async function sync(ctx: PluginContext, budget = new Budget()): Promise<SyncResult> {
+	budget.take();
 	const settings = await readSettings(ctx);
 	const missing = missingSettings(settings);
-	if (missing.length > 0) return { status: "not_configured", missing };
+	if (missing.length > 0 || !settings.databaseId) return { status: "not_configured", missing };
 
-	// Reading Notion and sending pages comes in steps 4 to 6 of the plan.
-	return { status: "idle" };
+	try {
+		const result = await runOnce(
+			ctx,
+			{ notionToken: settings.notionToken, databaseId: settings.databaseId, publish: settings.publish },
+			budget,
+		);
+		if (result.status === "sent") {
+			ctx.log.info("Sent a Notion page", { title: result.title, contentId: result.contentId, created: result.created });
+		}
+		return { ...result, calls: budget.used };
+	} catch (error) {
+		if (error instanceof NotionError) {
+			ctx.log.warn("Notion refused a request", { status: error.status, code: error.code, message: error.message });
+			return { status: "notion_error", httpStatus: error.status, code: error.code, message: error.message };
+		}
+		throw error;
+	}
 }
 
 /** What the next run would send, without sending it. */

@@ -114,7 +114,9 @@ describe("sync", () => {
 			notionToken: "secret",
 			databaseId: `https://www.notion.so/space/Posts-${DATABASE_ID}?v=fedcba9876543210fedcba9876543210`,
 		});
-		expect(await h.transport.invokeRoute("sync", {}, { method: "POST" })).toEqual({ status: "idle" });
+		await h.http.respond(`${API}/users/me`, json({ object: "error", code: "unauthorized", message: "API token is invalid." }, 401));
+		// Getting as far as asking Notion means the link was read as the database ID.
+		expect(await h.transport.invokeRoute("sync", {}, { method: "POST" })).toMatchObject({ status: "notion_error", httpStatus: 401 });
 	});
 });
 

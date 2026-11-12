@@ -1,7 +1,10 @@
 /** Images: reading them from Notion, and the shapes EmDash keeps them in. Ported from Post To EmDash's media.ts. */
 
 import type { FetchLike } from "./emdash.ts";
+import { fileNameFromUrl, imageFileName, mimeTypeOf, shortUrl } from "../shared/image-name.ts";
 import type { ImageBlock } from "../shared/portable-text.ts";
+
+export { fileNameFromUrl, mimeTypeOf, shortUrl };
 
 /** A media item returned by POST /media. */
 export interface MediaItem {
@@ -34,44 +37,8 @@ export interface ImageFile {
 	type: string;
 }
 
-const MIME_BY_EXTENSION: Record<string, string> = {
-	png: "image/png",
-	jpg: "image/jpeg",
-	jpeg: "image/jpeg",
-	gif: "image/gif",
-	webp: "image/webp",
-	avif: "image/avif",
-	bmp: "image/bmp",
-	svg: "image/svg+xml",
-};
-
-const EXTENSION_BY_MIME: Record<string, string> = {
-	"image/png": "png",
-	"image/jpeg": "jpg",
-	"image/gif": "gif",
-	"image/webp": "webp",
-	"image/avif": "avif",
-	"image/bmp": "bmp",
-	"image/svg+xml": "svg",
-};
-
 /** Images larger than this are not read (EmDash would refuse them anyway). */
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
-
-export function mimeTypeOf(filename: string): string | undefined {
-	const ext = filename.split(".").pop()?.toLowerCase() ?? "";
-	return MIME_BY_EXTENSION[ext];
-}
-
-/** The file name at the end of a URL ("photo.png"), without the query. */
-export function fileNameFromUrl(url: string): string {
-	try {
-		const last = new URL(url).pathname.split("/").filter(Boolean).pop() ?? "";
-		return decodeURIComponent(last);
-	} catch {
-		return "";
-	}
-}
 
 export class ImageDownloadError extends Error {
 	override name = "ImageDownloadError";
@@ -100,17 +67,9 @@ export async function downloadImage(url: string, fetchFn: FetchLike = (input, in
 		throw new ImageDownloadError(`The image ${shortUrl(url)} is larger than ${MAX_IMAGE_BYTES / 1024 / 1024} MB`);
 	}
 
-	let name = fileNameFromUrl(url);
-	const headerType = response.headers.get("Content-Type")?.split(";")[0]?.trim().toLowerCase();
-	const type = (headerType?.startsWith("image/") ? headerType : undefined) ?? mimeTypeOf(name);
-	if (!type) throw new ImageDownloadError(`${shortUrl(url)} is not an image`);
-	if (!mimeTypeOf(name)) name = `${name || "image"}.${EXTENSION_BY_MIME[type] ?? "bin"}`;
-	return { name, data, type };
-}
-
-/** The URL without its query, for messages (Notion's signed links are long and secret-ish). */
-export function shortUrl(url: string): string {
-	return url.split("?")[0]!;
+	const file = imageFileName(url, response.headers.get("Content-Type"));
+	if (!file) throw new ImageDownloadError(`${shortUrl(url)} is not an image`);
+	return { ...file, data };
 }
 
 /** Puts an uploaded image into a body image block. */
